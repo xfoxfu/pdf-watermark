@@ -9,7 +9,7 @@ RUN wget https://github.com/bblanchon/pdfium-binaries/releases/download/chromium
 RUN tar xzvf pdfium-linux-x64.tgz
 
 WORKDIR /app
-RUN cargo new --bin pdf-watermark .
+RUN cargo init --bin --name pdf-watermark
 COPY Cargo.toml Cargo.toml
 COPY Cargo.lock Cargo.lock
 RUN cargo build --release --frozen \
