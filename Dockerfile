@@ -12,7 +12,7 @@ WORKDIR /app
 RUN cargo init --bin --name pdf-watermark
 COPY Cargo.toml Cargo.toml
 COPY Cargo.lock Cargo.lock
-RUN cargo build --release --frozen \
+RUN cargo build --release --locked \
     && rm src/*.rs target/release/deps/pdf_watermark*
 
 ADD . ./
