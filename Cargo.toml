@@ -10,4 +10,5 @@ anyhow = "1.0.82"
 axum = { version = "0.7.5", features = ["multipart"] }
 nalgebra = "0.32.5"
 pdfium-render = "0.8.20"
+serde = { version = "1.0.201", features = ["derive"] }
 tokio = { version = "1.37.0", features = ["macros", "rt-multi-thread"] }
