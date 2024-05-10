@@ -7,6 +7,7 @@ use axum::Router;
 use pdf_watermark::mark_pdf;
 use pdfium_render::points::PdfPoints;
 use serde::Deserialize;
+use tracing::{error, info};
 
 #[derive(Default, Deserialize)]
 struct MarkQuery {
@@ -18,7 +19,7 @@ struct MarkQuery {
 }
 
 async fn mark(query: Query<MarkQuery>, pdf: Bytes) -> Result<Vec<u8>, AppError> {
-    println!("request received");
+    info!("request received");
     let marked = mark_pdf(
         &pdf,
         &query.text,
@@ -32,9 +33,14 @@ async fn mark(query: Query<MarkQuery>, pdf: Bytes) -> Result<Vec<u8>, AppError> 
 
 #[tokio::main]
 async fn main() {
+    const LISTEN_ADDRESS: &str = "[::]:3050";
+
+    tracing_subscriber::fmt::init();
+
     let app = Router::new().route("/", post(mark));
 
-    let listener = tokio::net::TcpListener::bind("[::]:3050").await.unwrap();
+    let listener = tokio::net::TcpListener::bind(LISTEN_ADDRESS).await.unwrap();
+    info!("Listening on {}", LISTEN_ADDRESS);
     axum::serve(listener, app).await.unwrap();
 }
 
@@ -44,6 +50,7 @@ struct AppError(anyhow::Error);
 // Tell axum how to convert `AppError` into a response.
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
+        error!("Internal error: {}", self.0);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Something went wrong: {}", self.0),
