@@ -6,8 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.82"
+anyhow = "1.0.83"
 axum = { version = "0.7.5", features = ["multipart"] }
+config = { version = "0.14.0" }
 nalgebra = "0.32.5"
 pdfium-render = "0.8.20"
 serde = { version = "1.0.201", features = ["derive"] }

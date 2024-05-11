@@ -1,5 +1,10 @@
+use crate::AppResult;
+use axum::{body::Bytes, extract::Query};
 use nalgebra::{Isometry2, Point2, Vector2};
+use pdfium_render::points::PdfPoints;
 use pdfium_render::prelude::*;
+use serde::Deserialize;
+use tracing::info;
 use tracing::{debug, span, Level};
 
 fn norm_to_rot(
@@ -40,7 +45,7 @@ fn rot_to_norm(
     (x, y)
 }
 
-pub fn mark_pdf(
+fn mark_pdf(
     pdf: &[u8],
     text: &str,
     text_size: f32,
@@ -93,4 +98,26 @@ pub fn mark_pdf(
     })?;
 
     document.save_to_bytes()
+}
+
+#[derive(Default, Deserialize)]
+pub struct MarkQuery {
+    text: String,
+    font_size: f32,
+    padding_w: f32,
+    padding_h: f32,
+    rot_deg: f32,
+}
+
+pub async fn mark(query: Query<MarkQuery>, pdf: Bytes) -> AppResult<Vec<u8>> {
+    info!("request received");
+    let marked = mark_pdf(
+        &pdf,
+        &query.text,
+        query.font_size,
+        PdfPoints::from_mm(query.padding_w),
+        PdfPoints::from_mm(query.padding_h),
+        query.rot_deg,
+    )?;
+    Ok(marked)
 }
