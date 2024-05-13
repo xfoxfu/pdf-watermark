@@ -1,5 +1,5 @@
-use axum::routing::post;
 use axum::Router;
+use axum::{extract::DefaultBodyLimit, routing::post};
 use tracing::info;
 
 mod controllers;
@@ -14,7 +14,9 @@ async fn main() {
 
     tracing_subscriber::fmt::init();
 
-    let app = Router::new().route("/utils/mark", post(controllers::utils::mark));
+    let app = Router::new()
+        .route("/utils/mark", post(controllers::utils::mark))
+        .layer(DefaultBodyLimit::max(settings.utils.mark_pdf_max_size_byte));
 
     let listener = tokio::net::TcpListener::bind(&settings.bind_address)
         .await

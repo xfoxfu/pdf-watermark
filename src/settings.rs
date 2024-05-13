@@ -3,8 +3,14 @@ use serde::Deserialize;
 use std::env;
 
 #[derive(Debug, Deserialize)]
+pub struct UtilsSettings {
+    pub mark_pdf_max_size_byte: usize,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Settings {
     pub bind_address: String,
+    pub utils: UtilsSettings,
 }
 
 impl Settings {
