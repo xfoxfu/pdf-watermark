@@ -1,9 +1,13 @@
+use crate::settings::Settings;
 use crate::{AppResult, DomainError};
+use axum::extract::State;
 use axum::{body::Bytes, extract::Query};
 use nalgebra::{Isometry2, Point2, Vector2};
 use pdfium_render::points::PdfPoints;
 use pdfium_render::prelude::*;
 use serde::Deserialize;
+use std::sync::atomic::AtomicBool;
+use std::time::{Duration, Instant};
 use tracing::info;
 use tracing::{debug, span, Level};
 
@@ -52,7 +56,8 @@ fn mark_pdf(
     padding_w: PdfPoints,
     padding_h: PdfPoints,
     theta: f32,
-) -> Result<Vec<u8>, PdfiumError> {
+    time_limit: Duration,
+) -> Result<(Vec<u8>, bool), PdfiumError> {
     let _span = span!(Level::DEBUG, "mark_pdf").entered();
 
     let pdfium = Pdfium::default();
@@ -62,7 +67,13 @@ fn mark_pdf(
 
     let font = document.fonts_mut().helvetica();
 
+    let start = Instant::now();
+    let timed_out = AtomicBool::new(false);
     document.pages().watermark(|group, index, page_w, page_h| {
+        if start.elapsed() > time_limit {
+            timed_out.store(true, std::sync::atomic::Ordering::Relaxed);
+            return Ok(());
+        }
         let _span = span!(Level::DEBUG, "page", page = index).entered();
 
         let watermark = PdfPageTextObject::new(&document, text, font, PdfPoints::new(text_size))?;
@@ -97,7 +108,9 @@ fn mark_pdf(
         Ok(())
     })?;
 
-    document.save_to_bytes()
+    document
+        .save_to_bytes()
+        .map(|v| (v, timed_out.load(std::sync::atomic::Ordering::Relaxed)))
 }
 
 #[derive(Default, Deserialize)]
@@ -109,15 +122,20 @@ pub struct MarkQuery {
     rot_deg: f32,
 }
 
-pub async fn mark(query: Query<MarkQuery>, pdf: Bytes) -> AppResult<Vec<u8>> {
+pub async fn mark(
+    State(settings): State<Settings>,
+    query: Query<MarkQuery>,
+    pdf: Bytes,
+) -> AppResult<Vec<u8>> {
     info!("request received");
-    let marked = mark_pdf(
+    let (marked, has_timeout) = mark_pdf(
         &pdf,
         &query.text,
         query.font_size,
         PdfPoints::from_mm(query.padding_w),
         PdfPoints::from_mm(query.padding_h),
         query.rot_deg,
+        Duration::from_secs(settings.utils.mark_pdf_timeout_secs),
     )
     .map_err(|e| -> crate::AppError {
         if let PdfiumError::PdfiumLibraryInternalError(PdfiumInternalError::FormatError) = e {
@@ -126,5 +144,8 @@ pub async fn mark(query: Query<MarkQuery>, pdf: Bytes) -> AppResult<Vec<u8>> {
             e.into()
         }
     })?;
+    if has_timeout {
+        Err(DomainError::PdfTimeout)?;
+    }
     Ok(marked)
 }

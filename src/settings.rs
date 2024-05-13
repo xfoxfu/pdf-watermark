@@ -2,12 +2,13 @@ use config::{Config, ConfigError, Environment, File, FileFormat};
 use serde::Deserialize;
 use std::env;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct UtilsSettings {
     pub mark_pdf_max_size_byte: usize,
+    pub mark_pdf_timeout_secs: u64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Settings {
     pub bind_address: String,
     pub utils: UtilsSettings,

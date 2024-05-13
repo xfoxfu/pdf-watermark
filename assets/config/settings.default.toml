@@ -3,3 +3,5 @@ bind_address = "[::1]:3050"
 [utils]
 # Limit max size of pdf watermark, default is 16MiB
 mark_pdf_max_size_byte = 16_777_216
+# Limit max watermarking time of pdf, default is 30 secs
+mark_pdf_timeout_secs = 30

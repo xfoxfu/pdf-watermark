@@ -114,4 +114,6 @@ macro_rules! domain_errors {
 domain_errors! {
     PdfFormatError, "utils.mark.format_error", StatusCode::BAD_REQUEST,
         "The document could not be loaded due to a format parsing error.";
+    PdfTimeout, "utils.mark.timeout", StatusCode::PAYLOAD_TOO_LARGE,
+        "The document has exceeded the processing timeout.";
 }
