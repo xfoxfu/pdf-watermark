@@ -1,4 +1,4 @@
-use crate::AppResult;
+use crate::{AppResult, DomainError};
 use axum::{body::Bytes, extract::Query};
 use nalgebra::{Isometry2, Point2, Vector2};
 use pdfium_render::points::PdfPoints;
@@ -118,6 +118,13 @@ pub async fn mark(query: Query<MarkQuery>, pdf: Bytes) -> AppResult<Vec<u8>> {
         PdfPoints::from_mm(query.padding_w),
         PdfPoints::from_mm(query.padding_h),
         query.rot_deg,
-    )?;
+    )
+    .map_err(|e| -> crate::AppError {
+        if let PdfiumError::PdfiumLibraryInternalError(PdfiumInternalError::FormatError) = e {
+            DomainError::PdfFormatError.into()
+        } else {
+            e.into()
+        }
+    })?;
     Ok(marked)
 }

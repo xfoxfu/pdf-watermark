@@ -112,7 +112,6 @@ macro_rules! domain_errors {
 }
 
 domain_errors! {
-    Foo, "common.foo", StatusCode::NOT_FOUND, "description";
-    Bar, "common.bar", StatusCode::BAD_REQUEST, "description";
-    User {user_id: usize}, "user.error", StatusCode::NOT_FOUND, "description";
+    PdfFormatError, "utils.mark.format_error", StatusCode::BAD_REQUEST,
+        "The document could not be loaded due to a format parsing error.";
 }
