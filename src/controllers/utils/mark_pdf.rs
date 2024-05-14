@@ -1,116 +1,57 @@
 use crate::settings::Settings;
 use crate::{AppResult, DomainError};
+use anyhow::{Context, Error};
 use axum::extract::State;
 use axum::{body::Bytes, extract::Query};
-use nalgebra::{Isometry2, Point2, Vector2};
-use pdfium_render::points::PdfPoints;
-use pdfium_render::prelude::*;
 use serde::Deserialize;
-use std::sync::atomic::AtomicBool;
-use std::time::{Duration, Instant};
+use std::process::Stdio;
+use std::time::Duration;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::process::Command;
 use tracing::info;
-use tracing::{debug, span, Level};
 
-fn norm_to_rot(
-    theta: f32,
-    page_w: PdfPoints,
-    xx: PdfPoints,
-    yy: PdfPoints,
-) -> (PdfPoints, PdfPoints) {
-    let point = Point2::new(xx.value, yy.value);
-    let proj = Isometry2::new(
-        Vector2::new(0.0, page_w.value * theta.to_radians().sin()),
-        -theta.to_radians(),
-    );
-
-    let point = proj.transform_point(&point);
-    let (x, y) = (PdfPoints::new(point.x), PdfPoints::new(point.y));
-    let (x, y) = (x, y);
-
-    (x, y)
-}
-
-fn rot_to_norm(
-    theta: f32,
-    page_w: PdfPoints,
-    x: PdfPoints,
-    y: PdfPoints,
-) -> (PdfPoints, PdfPoints) {
-    let point = Point2::new(x.value, y.value);
-    let proj = Isometry2::new(
-        Vector2::new(0.0, page_w.value * theta.to_radians().sin()),
-        -theta.to_radians(),
-    );
-
-    let point = proj.inverse_transform_point(&point);
-    let (x, y) = (PdfPoints::new(point.x), PdfPoints::new(point.y));
-    let (x, y) = (x, y);
-
-    (x, y)
-}
-
-fn mark_pdf(
-    pdf: &[u8],
-    text: &str,
-    text_size: f32,
-    padding_w: PdfPoints,
-    padding_h: PdfPoints,
-    theta: f32,
-    time_limit: Duration,
-) -> Result<(Vec<u8>, bool), PdfiumError> {
-    let _span = span!(Level::DEBUG, "mark_pdf").entered();
-
-    let pdfium = Pdfium::default();
-
-    let mut document = pdfium.load_pdf_from_byte_slice(pdf, None)?;
-    debug!("pdf document loaded");
-
-    let font = document.fonts_mut().helvetica();
-
-    let start = Instant::now();
-    let timed_out = AtomicBool::new(false);
-    document.pages().watermark(|group, index, page_w, page_h| {
-        if start.elapsed() > time_limit {
-            timed_out.store(true, std::sync::atomic::Ordering::Relaxed);
-            return Ok(());
+/// Modified from https://docs.rs/tokio/latest/tokio/process/struct.Child.html#method.wait_with_output
+pub async fn wait_with_output(
+    mut child: tokio::process::Child,
+    timeout: Duration,
+) -> tokio::io::Result<Option<std::process::Output>> {
+    async fn read_to_end<A: tokio::io::AsyncRead + Unpin>(
+        io: &mut Option<A>,
+    ) -> tokio::io::Result<Vec<u8>> {
+        let mut vec = Vec::new();
+        if let Some(io) = io.as_mut() {
+            io.read_to_end(&mut vec).await?;
         }
-        let _span = span!(Level::DEBUG, "page", page = index).entered();
+        Ok(vec)
+    }
 
-        let watermark = PdfPageTextObject::new(&document, text, font, PdfPoints::new(text_size))?;
-        let (w, h) = (watermark.width()?, watermark.height()?);
-        let (w, h) = (w + padding_w, h + padding_h);
+    let mut stdout_pipe = child.stdout.take();
+    let mut stderr_pipe = child.stderr.take();
 
-        let (w_max_r, _) = norm_to_rot(theta, page_w, page_w, page_h);
-        let (_, h_max_r) = norm_to_rot(theta, page_w, PdfPoints::ZERO, page_h);
+    let stdout_fut = read_to_end(&mut stdout_pipe);
+    let stderr_fut = read_to_end(&mut stderr_pipe);
 
-        let total_i = (w_max_r.value / w.value).ceil() as u32;
-        let total_j = (h_max_r.value / h.value).ceil() as u32;
-        debug!(
-            "total watermarks on page {} = {} x {}",
-            index, total_i, total_j
-        );
+    let Ok(result) = tokio::time::timeout(
+        timeout,
+        futures::future::try_join3(child.wait(), stdout_fut, stderr_fut),
+    )
+    .await
+    else {
+        info!("timed out");
+        child.kill().await?;
+        return Ok(None);
+    };
+    let (status, stdout, stderr) = result?;
 
-        for i in 0..total_i {
-            for j in 0..total_j {
-                let (x, y) = (w * i as f32, h * j as f32);
-                let (xx, yy) = rot_to_norm(theta, page_w, x, y);
-                let (xx, yy) = (xx - h * theta.to_radians().sin(), yy);
+    // Drop happens after `try_join` due to <https://github.com/tokio-rs/tokio/issues/4309>
+    drop(stdout_pipe);
+    drop(stderr_pipe);
 
-                let mut watermark =
-                    PdfPageTextObject::new(&document, text, font, PdfPoints::new(text_size))?;
-                watermark.rotate_counter_clockwise_degrees(theta)?;
-                watermark.set_fill_color(PdfColor::GREY.with_alpha(64))?;
-                watermark.translate(xx, yy)?;
-                group.push(&mut watermark.into())?;
-            }
-        }
-
-        Ok(())
-    })?;
-
-    document
-        .save_to_bytes()
-        .map(|v| (v, timed_out.load(std::sync::atomic::Ordering::Relaxed)))
+    Ok(Some(std::process::Output {
+        status,
+        stdout,
+        stderr,
+    }))
 }
 
 #[derive(Default, Deserialize)]
@@ -128,24 +69,66 @@ pub async fn mark(
     pdf: Bytes,
 ) -> AppResult<Vec<u8>> {
     info!("request received");
-    let (marked, has_timeout) = mark_pdf(
-        &pdf,
+
+    let exe = std::env::current_exe()
+        .context("Failed to get current exe path")?
+        .parent()
+        .ok_or(Error::msg("Current exe path does not have parent dir"))?
+        .join("mark_pdf");
+    let args = [
+        "--text",
         &query.text,
-        query.font_size,
-        PdfPoints::from_mm(query.padding_w),
-        PdfPoints::from_mm(query.padding_h),
-        query.rot_deg,
+        "--font-size",
+        &query.font_size.to_string(),
+        "--padding-w",
+        &query.padding_w.to_string(),
+        "--padding-h",
+        &query.padding_h.to_string(),
+        "--rot-deg",
+        &query.rot_deg.to_string(),
+    ];
+    info!("executing {:?} {:?}", exe, args);
+
+    let mut child = Command::new(exe)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("Failed to spawn mark_pdf child process")?;
+
+    let mut stdin = child.stdin.take().unwrap();
+    tokio::spawn(async move {
+        stdin
+            .write_all(&pdf)
+            .await
+            .expect("Failed to write to stdin for child process");
+        drop(stdin);
+    });
+
+    let Some(result) = wait_with_output(
+        child,
         Duration::from_secs(settings.utils.mark_pdf_timeout_secs),
     )
-    .map_err(|e| -> crate::AppError {
-        if let PdfiumError::PdfiumLibraryInternalError(PdfiumInternalError::FormatError) = e {
-            DomainError::PdfFormatError.into()
-        } else {
-            e.into()
+    .await
+    .context("Failed to get process output")?
+    else {
+        return Err(DomainError::PdfTimeout.into());
+    };
+
+    if result.status.success() {
+        Ok(result.stdout)
+    } else {
+        match result.status.code() {
+            Some(1) => Err(DomainError::PdfInternalError {
+                cause: String::from_utf8(result.stderr)?,
+            }
+            .into()),
+            Some(2) => Err(DomainError::PdfFormatError.into()),
+            _ => Err(DomainError::PdfInternalError {
+                cause: format!("Unexpected exit code: {:?}", result.status.code()),
+            }
+            .into()),
         }
-    })?;
-    if has_timeout {
-        Err(DomainError::PdfTimeout)?;
     }
-    Ok(marked)
 }

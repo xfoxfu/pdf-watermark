@@ -44,7 +44,7 @@ struct ProblemDetails {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response<Body> {
         if let AppError::Unknown(err) = &self {
-            error!("Internal error: {}", err);
+            error!("Internal error: {:?}", err);
         }
 
         let mut headers = HeaderMap::new();
@@ -64,7 +64,10 @@ impl IntoResponse for AppError {
                 Self::DomainError(e) => e.description().to_owned(),
             },
             status: code.as_u16(),
-            detail: None,
+            detail: match &self {
+                Self::Unknown(e) => Some(e.backtrace().to_string()),
+                Self::DomainError(_) => None,
+            },
             instance: None,
         };
 
@@ -112,6 +115,8 @@ macro_rules! domain_errors {
 }
 
 domain_errors! {
+    PdfInternalError { cause: String }, "utils.mark.internal", StatusCode::INTERNAL_SERVER_ERROR,
+        "The document could not be processed due to an internal error.";
     PdfFormatError, "utils.mark.format_error", StatusCode::BAD_REQUEST,
         "The document could not be loaded due to a format parsing error.";
     PdfTimeout, "utils.mark.timeout", StatusCode::PAYLOAD_TOO_LARGE,

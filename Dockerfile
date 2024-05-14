@@ -41,7 +41,8 @@ ADD . ./
 RUN . /app/.env && \
     cargo build --release --frozen --target ${RUST_TARGET} && \
     mkdir -p /app/target/release && \
-    cp /app/target/${RUST_TARGET}/release/pdf-watermark /app/target/release/pdf-watermark
+    cp /app/target/${RUST_TARGET}/release/pdf-watermark /app/target/release/pdf-watermark && \
+    cp /app/target/${RUST_TARGET}/release/mark_pdf /app/target/release/mark_pdf
 
 FROM debian:bookworm-slim
 
@@ -53,6 +54,7 @@ RUN mkdir -p /app && \
 WORKDIR /app
 
 COPY --from=builder /app/target/release/pdf-watermark pdf-watermark
+COPY --from=builder /app/target/release/mark_pdf mark_pdf
 COPY --from=builder /app/pdfium/lib/libpdfium.so libpdfium.so
 
 CMD ["/usr/bin/tini", "--", "/app/pdf-watermark"]
