@@ -2,6 +2,8 @@ use crate::settings::Settings;
 use crate::{AppResult, DomainError};
 use anyhow::{Context, Error};
 use axum::extract::State;
+use axum::http::header::{CONTENT_DISPOSITION, CONTENT_TYPE};
+use axum::response::{AppendHeaders, IntoResponse};
 use axum::{body::Bytes, extract::Query};
 use serde::Deserialize;
 use std::process::Stdio;
@@ -67,7 +69,7 @@ pub async fn mark(
     State(settings): State<Settings>,
     query: Query<MarkQuery>,
     pdf: Bytes,
-) -> AppResult<Vec<u8>> {
+) -> AppResult<impl IntoResponse> {
     info!("request received");
 
     let exe = std::env::current_exe()
@@ -117,7 +119,13 @@ pub async fn mark(
     };
 
     if result.status.success() {
-        Ok(result.stdout)
+        Ok((
+            AppendHeaders([
+                (CONTENT_TYPE, "application/pdf"),
+                (CONTENT_DISPOSITION, "inline"),
+            ]),
+            result.stdout,
+        ))
     } else {
         match result.status.code() {
             Some(1) => Err(DomainError::PdfInternalError {
