@@ -5,6 +5,7 @@ use tracing::info;
 mod controllers;
 mod error;
 mod settings;
+mod utils;
 
 pub use error::{AppError, AppResult, DomainError};
 

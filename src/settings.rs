@@ -5,7 +5,6 @@ use std::env;
 #[derive(Debug, Deserialize, Clone)]
 pub struct UtilsSettings {
     pub mark_pdf_max_size_byte: usize,
-    pub mark_pdf_timeout_secs: u64,
 }
 
 #[derive(Debug, Deserialize, Clone)]
