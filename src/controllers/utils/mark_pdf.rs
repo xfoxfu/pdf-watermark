@@ -1,5 +1,3 @@
-use std::thread::current;
-
 use crate::utils::pdf_points::PdfPoints;
 use crate::utils::text_width::helvetica_width;
 use crate::AppResult;
@@ -10,7 +8,7 @@ use lopdf::content::{Content, Operation};
 use lopdf::Document;
 use lopdf::Object;
 use lopdf::{dictionary, Dictionary};
-use nalgebra::{Isometry2, Matrix3, Point2, Vector2};
+use nalgebra::{Isometry2, Point2, Vector2};
 use serde::Deserialize;
 use tracing::info;
 
@@ -52,12 +50,10 @@ fn rot_to_norm(
     (x, y)
 }
 
-fn mark_pdf(
-    doc: &[u8],
-    text: &str,
-    font_size_pt: f32,
-    theta_deg: f32,
-) -> Result<Vec<u8>, lopdf::Error> {
+fn mark_pdf(doc: &[u8], text: &str, font_size_pt: f32, theta_deg: f32) -> anyhow::Result<Vec<u8>> {
+    let doc = qpdf::QPdf::read_from_memory(doc)?;
+    let doc = doc.writer().preserve_encryption(false).write_to_memory()?;
+
     let font_size = PdfPoints::new(font_size_pt);
     let w = PdfPoints::new(helvetica_width(text, font_size_pt));
     let h = font_size;
@@ -66,7 +62,7 @@ fn mark_pdf(
     let (w, h) = (w + padding_w, h + padding_h);
     let theta_rad = theta_deg.to_radians();
 
-    let mut doc = Document::load_mem(doc)?;
+    let mut doc = Document::load_mem(&doc)?;
 
     // font
     let font_id = doc.add_object(dictionary! {
@@ -176,6 +172,23 @@ fn mark_pdf(
 
     let mut vec = Vec::new();
     doc.save_to(&mut vec)?;
+
+    let doc = qpdf::QPdf::read_from_memory(vec)?;
+    let vec = doc
+        .writer()
+        .encryption_params(qpdf::EncryptionParams::R6(qpdf::EncryptionParamsR6 {
+            user_password: "".to_owned(),
+            owner_password: "9bd33204-8c7c-4cc2-8c22-70e09062c102".to_owned(),
+            allow_accessibility: false,
+            allow_extract: false,
+            allow_assemble: false,
+            allow_annotate_and_form: false,
+            allow_form_filling: false,
+            allow_modify_other: false,
+            allow_print: qpdf::PrintPermission::Low,
+            encrypt_metadata: false,
+        }))
+        .write_to_memory()?;
     Ok(vec)
 }
 
