@@ -1,3 +1,5 @@
+use std::thread::current;
+
 use crate::utils::pdf_points::PdfPoints;
 use crate::utils::text_width::helvetica_width;
 use crate::AppResult;
@@ -108,50 +110,9 @@ fn mark_pdf(
         let total_i = (w_max_r.value / w.value).ceil() as u32;
         let total_j = (h_max_r.value / h.value).ceil() as u32;
 
-        // compute previous translation
-        let mut matrix = Matrix3::<f32>::identity();
-        let mut groups = Vec::new();
-        for operation in Content::decode(&doc.get_page_content(page_id)?)?.operations {
-            match operation.operator.as_ref() {
-                "cm" => {
-                    if groups.is_empty() {
-                        matrix = Matrix3::<f32>::new(
-                            operation.operands[0].as_float()?,
-                            operation.operands[1].as_float()?,
-                            operation.operands[4].as_float()?,
-                            operation.operands[2].as_float()?,
-                            operation.operands[3].as_float()?,
-                            operation.operands[5].as_float()?,
-                            0.0,
-                            0.0,
-                            1.0,
-                        ) * matrix
-                    }
-                }
-                "q" => groups.push(()),
-                "Q" => {
-                    groups.pop();
-                }
-                _ => {}
-            }
-        }
-        let inv = matrix.try_inverse().unwrap_or_else(Matrix3::identity);
-
         // generate watermarks
         // see https://github.com/Hopding/pdf-lib/blob/master/src/api/operations.ts#L52
         let mut operations = vec![
-            // cancel any previous translation
-            Operation::new(
-                "cm",
-                vec![
-                    inv.m11.into(),
-                    inv.m12.into(),
-                    inv.m21.into(),
-                    inv.m22.into(),
-                    inv.m13.into(),
-                    inv.m23.into(),
-                ],
-            ),
             // enter graphics group
             Operation::new("q", vec![]),
             // set graphics state
@@ -191,6 +152,28 @@ fn mark_pdf(
 
         let content = Content { operations };
         doc.add_to_page_content(page_id, content)?;
+
+        // transmute array to put our content as first
+        if let Ok(page) = doc.get_dictionary(page_id) {
+            let mut current_content_list: Vec<Object> = match page.get(b"Contents") {
+                Ok(Object::Reference(ref id)) => {
+                    // Covert reference to array
+                    vec![Object::Reference(*id)]
+                }
+                Ok(Object::Array(ref arr)) => arr.clone(),
+                Err(lopdf::Error::DictKey) => vec![],
+                _ => vec![],
+            };
+            info!("current_content_list: {:?}", current_content_list);
+            let last = current_content_list.pop().unwrap();
+            current_content_list.insert(0, last);
+            info!("current_content_list: {:?}", current_content_list);
+            let page_mut = doc
+                .get_object_mut(page_id)
+                .and_then(Object::as_dict_mut)
+                .unwrap();
+            page_mut.set("Contents", current_content_list);
+        }
     }
 
     let mut vec = Vec::new();
