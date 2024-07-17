@@ -164,10 +164,8 @@ fn mark_pdf(
                 Err(lopdf::Error::DictKey) => vec![],
                 _ => vec![],
             };
-            info!("current_content_list: {:?}", current_content_list);
             let last = current_content_list.pop().unwrap();
             current_content_list.insert(0, last);
-            info!("current_content_list: {:?}", current_content_list);
             let page_mut = doc
                 .get_object_mut(page_id)
                 .and_then(Object::as_dict_mut)
