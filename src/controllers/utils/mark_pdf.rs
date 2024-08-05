@@ -8,7 +8,7 @@ use lopdf::content::{Content, Operation};
 use lopdf::Document;
 use lopdf::Object;
 use lopdf::{dictionary, Dictionary};
-use nalgebra::{Isometry2, Point2, Vector2};
+use nalgebra::{Isometry2, Matrix3, Point2, Vector2};
 use serde::Deserialize;
 use tracing::info;
 
@@ -71,9 +71,7 @@ fn mark_pdf(doc: &[u8], text: &str, font_size_pt: f32, theta_deg: f32) -> anyhow
         "BaseFont" => "Helvetica",
     });
     // graphics state (for opacity)
-    let gs_id = doc.add_object(dictionary! {
-        "ca" => 0.05
-    });
+    let gs_id = doc.add_object(dictionary! { "ca" => 0.05 });
 
     for page_id in doc.page_iter().collect::<Vec<_>>().into_iter() {
         // add font to page
@@ -106,11 +104,52 @@ fn mark_pdf(doc: &[u8], text: &str, font_size_pt: f32, theta_deg: f32) -> anyhow
         let total_i = (w_max_r.value / w.value).ceil() as u32;
         let total_j = (h_max_r.value / h.value).ceil() as u32;
 
+        // compute previous translation
+        let mut matrix = Matrix3::<f32>::identity();
+        let mut groups = Vec::new();
+        for operation in Content::decode(&doc.get_page_content(page_id)?)?.operations {
+            match operation.operator.as_ref() {
+                "cm" => {
+                    if groups.is_empty() {
+                        matrix = Matrix3::<f32>::new(
+                            operation.operands[0].as_float()?,
+                            operation.operands[1].as_float()?,
+                            operation.operands[4].as_float()?,
+                            operation.operands[2].as_float()?,
+                            operation.operands[3].as_float()?,
+                            operation.operands[5].as_float()?,
+                            0.0,
+                            0.0,
+                            1.0,
+                        ) * matrix
+                    }
+                }
+                "q" => groups.push(()),
+                "Q" => {
+                    groups.pop();
+                }
+                _ => {}
+            }
+        }
+        let inv = matrix.try_inverse().unwrap_or_else(Matrix3::identity);
+
         // generate watermarks
         // see https://github.com/Hopding/pdf-lib/blob/master/src/api/operations.ts#L52
         let mut operations = vec![
             // enter graphics group
             Operation::new("q", vec![]),
+            // cancel any previous translation
+            Operation::new(
+                "cm",
+                vec![
+                    inv.m11.into(),
+                    inv.m12.into(),
+                    inv.m21.into(),
+                    inv.m22.into(),
+                    inv.m13.into(),
+                    inv.m23.into(),
+                ],
+            ),
             // set graphics state
             Operation::new("gs", vec!["GS_VATPRC".into()]),
             // begin text region
@@ -148,26 +187,6 @@ fn mark_pdf(doc: &[u8], text: &str, font_size_pt: f32, theta_deg: f32) -> anyhow
 
         let content = Content { operations };
         doc.add_to_page_content(page_id, content)?;
-
-        // transmute array to put our content as first
-        if let Ok(page) = doc.get_dictionary(page_id) {
-            let mut current_content_list: Vec<Object> = match page.get(b"Contents") {
-                Ok(Object::Reference(ref id)) => {
-                    // Covert reference to array
-                    vec![Object::Reference(*id)]
-                }
-                Ok(Object::Array(ref arr)) => arr.clone(),
-                Err(lopdf::Error::DictKey) => vec![],
-                _ => vec![],
-            };
-            let last = current_content_list.pop().unwrap();
-            current_content_list.insert(0, last);
-            let page_mut = doc
-                .get_object_mut(page_id)
-                .and_then(Object::as_dict_mut)
-                .unwrap();
-            page_mut.set("Contents", current_content_list);
-        }
     }
 
     let mut vec = Vec::new();
