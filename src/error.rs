@@ -56,7 +56,7 @@ impl IntoResponse for AppError {
         };
         let problem_details = ProblemDetails {
             r#type: match &self {
-                Self::Unknown(_) => "urn:api-error:common.internal",
+                Self::Unknown(_) => "urn:vatprc-uniapi-error:common.internal",
                 Self::DomainError(e) => e.code(),
             },
             title: match &self {
@@ -95,7 +95,7 @@ macro_rules! domain_errors {
         impl DomainError {
             pub fn code(&self) -> &'static str {
                 match self {
-                    $(_eliminate_fields!($name $({$($field)+})?) => concat!("urn:api-error:", $code),)+
+                    $(_eliminate_fields!($name $({$($field)+})?) => concat!("urn:vatprc-uniapi-error", $code),)+
                 }
             }
 

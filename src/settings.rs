@@ -11,6 +11,13 @@ pub struct UtilsSettings {
 pub struct Settings {
     pub bind_address: String,
     pub utils: UtilsSettings,
+    pub database: Database,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Database {
+    pub url: String,
+    pub legacy_url: String,
 }
 
 impl Settings {
