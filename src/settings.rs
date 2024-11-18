@@ -4,36 +4,36 @@ use std::env;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct UtilsSettings {
-    pub mark_pdf_max_size_byte: usize,
+  pub mark_pdf_max_size_byte: usize,
 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Settings {
-    pub bind_address: String,
-    pub utils: UtilsSettings,
-    pub database: Database,
+  pub bind_address: String,
+  pub utils: UtilsSettings,
+  pub database: Database,
 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Database {
-    pub url: String,
-    pub legacy_url: String,
+  pub url: String,
+  pub legacy_url: String,
 }
 
 impl Settings {
-    pub fn new() -> Result<Self, ConfigError> {
-        let run_mode = env::var("RUN_MODE").unwrap_or_else(|_| "development".into());
+  pub fn new() -> Result<Self, ConfigError> {
+    let run_mode = env::var("RUN_MODE").unwrap_or_else(|_| "development".into());
 
-        let s = Config::builder()
-            .add_source(File::from_str(
-                include_str!("../assets/config/settings.default.toml"),
-                FileFormat::Toml,
-            ))
-            .add_source(File::with_name(&format!("settings.{}", run_mode)).required(false))
-            .add_source(File::with_name("settings.local").required(false))
-            .add_source(Environment::with_prefix("app"))
-            .build()?;
+    let s = Config::builder()
+      .add_source(File::from_str(
+        include_str!("../assets/config/settings.default.toml"),
+        FileFormat::Toml,
+      ))
+      .add_source(File::with_name(&format!("settings.{}", run_mode)).required(false))
+      .add_source(File::with_name("settings.local").required(false))
+      .add_source(Environment::with_prefix("app"))
+      .build()?;
 
-        s.try_deserialize()
-    }
+    s.try_deserialize()
+  }
 }

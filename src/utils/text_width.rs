@@ -120,12 +120,13 @@ const HELVETICA_CHAR_WIDTH: phf::Map<char, u32> = phf::phf_map! {
 };
 
 pub fn helvetica_width(text: &str, font_size: f32) -> f32 {
-    text.chars()
-        .map(|c| {
-            *HELVETICA_CHAR_WIDTH
-                .get(&c)
-                .unwrap_or(HELVETICA_CHAR_WIDTH.get(&'x').unwrap()) as f32
-                * (font_size / 100.0)
-        })
-        .sum()
+  text
+    .chars()
+    .map(|c| {
+      *HELVETICA_CHAR_WIDTH
+        .get(&c)
+        .unwrap_or(HELVETICA_CHAR_WIDTH.get(&'x').unwrap()) as f32
+        * (font_size / 100.0)
+    })
+    .sum()
 }
