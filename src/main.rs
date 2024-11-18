@@ -1,5 +1,5 @@
 use axum::extract::DefaultBodyLimit;
-use axum::routing::{get, post};
+use axum::routing::*;
 use axum::Router;
 use sqlx::{MySqlPool, PgPool};
 use tracing::info;
@@ -8,7 +8,6 @@ mod controllers;
 mod database;
 mod error;
 mod settings;
-mod utils;
 
 pub use error::{AppError, AppResult, DomainError};
 
@@ -42,7 +41,10 @@ async fn main() {
       post(controllers::utils::mark).layer(DefaultBodyLimit::max(settings.utils.mark_pdf_max_size_byte)),
     )
     .route("/events", get(controllers::events::list))
+    .route("/events", post(controllers::events::create))
     .route("/events/:id", get(controllers::events::get))
+    .route("/events/:id", put(controllers::events::update))
+    .route("/events/:id", delete(controllers::events::delete))
     .with_state(app_state);
 
   let listener = tokio::net::TcpListener::bind(&settings.bind_address).await.unwrap();

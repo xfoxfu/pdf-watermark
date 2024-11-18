@@ -3,7 +3,7 @@ use crate::{AppError, AppResult, AppState};
 use axum::extract::{Path, State};
 use axum::response::IntoResponse;
 use axum::Json;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use ulid::Ulid;
 
 #[derive(Debug, Serialize, Clone)]
@@ -53,4 +53,60 @@ pub async fn get(State(state): State<AppState>, Path(id): Path<Ulid>) -> AppResu
     return Err(AppError::DomainError(crate::DomainError::EventNotFound { id }));
   };
   Ok(Json(event))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateOrUpdateEvent {
+  pub title: String,
+  pub start_at: chrono::DateTime<chrono::Utc>,
+  pub end_at: chrono::DateTime<chrono::Utc>,
+  pub start_booking_at: chrono::DateTime<chrono::Utc>,
+  pub end_booking_at: chrono::DateTime<chrono::Utc>,
+  pub image_url: Option<String>,
+  pub description: String,
+}
+
+pub async fn create(
+  State(state): State<AppState>,
+  Json(payload): Json<CreateOrUpdateEvent>,
+) -> AppResult<impl IntoResponse> {
+  let event = state
+    .event_accessor()
+    .create()
+    .title(payload.title)
+    .start_at(payload.start_at)
+    .end_at(payload.end_at)
+    .start_booking_at(payload.start_booking_at)
+    .end_booking_at(payload.end_booking_at)
+    .maybe_image_url(payload.image_url)
+    .description(payload.description)
+    .call()
+    .await?;
+  Ok(Json(Event::from(event)))
+}
+
+pub async fn update(
+  State(state): State<AppState>,
+  Path(id): Path<Ulid>,
+  Json(payload): Json<CreateOrUpdateEvent>,
+) -> AppResult<impl IntoResponse> {
+  let event = state
+    .event_accessor()
+    .update()
+    .id(id)
+    .title(payload.title)
+    .start_at(payload.start_at)
+    .end_at(payload.end_at)
+    .start_booking_at(payload.start_booking_at)
+    .end_booking_at(payload.end_booking_at)
+    .maybe_image_url(payload.image_url)
+    .description(payload.description)
+    .call()
+    .await?;
+  Ok(Json(Event::from(event)))
+}
+
+pub async fn delete(State(state): State<AppState>, Path(id): Path<Ulid>) -> AppResult<impl IntoResponse> {
+  let event = state.event_accessor().delete(id).await?;
+  Ok(Json(Event::from(event)))
 }

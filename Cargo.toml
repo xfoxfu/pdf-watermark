@@ -5,9 +5,13 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[profile.dev.package.sqlx-macros]
+opt-level = 3
+
 [dependencies]
 anyhow = "1.0.89"
 axum = { version = "0.7.7", features = ["multipart"] }
+bon = "3.0.1"
 chrono = { version = "0.4.38", features = ["serde"] }
 clap = { version = "4.5.4", features = ["derive"] }
 config = { version = "0.14.0" }

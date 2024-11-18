@@ -1,5 +1,5 @@
-use crate::utils::pdf_points::PdfPoints;
-use crate::utils::text_width::helvetica_width;
+use self::pdf_points::PdfPoints;
+use self::text_width::helvetica_width;
 use crate::AppResult;
 use axum::http::header::{CONTENT_DISPOSITION, CONTENT_TYPE};
 use axum::response::{AppendHeaders, IntoResponse};
@@ -217,4 +217,295 @@ pub async fn mark(query: Query<MarkQuery>, pdf: Bytes) -> AppResult<impl IntoRes
     AppendHeaders([(CONTENT_TYPE, "application/pdf"), (CONTENT_DISPOSITION, "inline")]),
     result,
   ))
+}
+
+mod pdf_points {
+  //! Copied from https://docs.rs/pdfium-render/0.8.20/src/pdfium_render/points.rs.html#12-14
+  //! Licensed under either of
+  //!
+  //! * Apache License, Version 2.0 (LICENSE-APACHE or http://www.apache.org/licenses/LICENSE-2.0)
+  //! * MIT License (LICENSE-MIT or http://opensource.org/licenses/MIT)
+  //!
+  //! at your option.
+
+  #![allow(dead_code)]
+
+  use std::ops::{Add, AddAssign, Div, Mul, Sub, SubAssign};
+
+  /// The internal coordinate system inside a `PdfDocument` is measured in Points, a
+  /// device-independent unit equal to 1/72 inches, roughly 0.358 mm. Points are converted to pixels
+  /// when a `PdfPage` is rendered into a `PdfBitmap`.
+  #[derive(Debug, Copy, Clone, PartialOrd, PartialEq)]
+  pub struct PdfPoints {
+    pub value: f32,
+  }
+
+  impl PdfPoints {
+    /// A [PdfPoints] object with identity value 0.0.
+    pub const ZERO: PdfPoints = PdfPoints::zero();
+
+    /// A [PdfPoints] object with the largest addressable finite positive value.
+    pub const MAX: PdfPoints = PdfPoints::max();
+
+    /// A [PdfPoints] object with the smallest addressable finite negative value.
+    pub const MIN: PdfPoints = PdfPoints::min();
+
+    /// Creates a new [PdfPoints] object with the given value.
+    #[inline]
+    pub const fn new(value: f32) -> Self {
+      Self { value }
+    }
+
+    /// Creates a new [PdfPoints] object with the value 0.0.
+    ///
+    /// Consider using the compile-time constant value [PdfPoints::ZERO]
+    /// rather than calling this function directly.
+    #[inline]
+    pub const fn zero() -> Self {
+      Self::new(0.0)
+    }
+
+    /// A [PdfPoints] object with the largest addressable finite positive value.
+    ///
+    /// In theory, this should be [f32::MAX]; in practice, values approaching [f32::MAX]
+    /// are handled inconsistently by Pdfium, so this value is set to an arbitrarily large
+    /// positive value that does not approach [f32::MAX] but should more than suffice
+    /// for every use case.
+    #[inline]
+    pub const fn max() -> Self {
+      Self::new(2_000_000_000.0)
+    }
+
+    /// A [PdfPoints] object with the smallest addressable finite negative value.
+    ///
+    /// In theory, this should be [f32::MIN]; in practice, values approaching [f32::MIN]
+    /// are handled inconsistently by Pdfium, so this value is set to an arbitrarily large
+    /// negative value that does not approach [f32::MIN] but should more than suffice
+    /// for every use case.
+    #[inline]
+    pub const fn min() -> Self {
+      Self::new(-2_000_000_000.0)
+    }
+
+    /// Creates a new [PdfPoints] object from the given measurement in inches.
+    #[inline]
+    pub fn from_inches(inches: f32) -> Self {
+      Self::new(inches * 72.0)
+    }
+
+    /// Creates a new [PdfPoints] object from the given measurement in centimeters.
+    #[inline]
+    pub fn from_cm(cm: f32) -> Self {
+      Self::from_inches(cm / 2.54)
+    }
+
+    /// Creates a new [PdfPoints] object from the given measurement in millimeters.
+    #[inline]
+    pub fn from_mm(mm: f32) -> Self {
+      Self::from_cm(mm / 10.0)
+    }
+
+    /// Converts the value of this [PdfPoints] object to inches.
+    #[inline]
+    pub fn inches(&self) -> f32 {
+      self.value / 72.0
+    }
+
+    /// Converts the value of this [PdfPoints] object to centimeters.
+    #[inline]
+    pub fn cm(&self) -> f32 {
+      self.inches() * 2.54
+    }
+
+    /// Converts the value of this [PdfPoints] object to millimeters.
+    #[inline]
+    pub fn mm(&self) -> f32 {
+      self.cm() * 10.0
+    }
+  }
+
+  impl Add<PdfPoints> for PdfPoints {
+    type Output = PdfPoints;
+
+    #[inline]
+    fn add(self, rhs: Self) -> Self::Output {
+      PdfPoints::new(self.value + rhs.value)
+    }
+  }
+
+  impl AddAssign<PdfPoints> for PdfPoints {
+    #[inline]
+    fn add_assign(&mut self, rhs: PdfPoints) {
+      self.value += rhs.value;
+    }
+  }
+
+  impl Sub<PdfPoints> for PdfPoints {
+    type Output = PdfPoints;
+
+    #[inline]
+    fn sub(self, rhs: Self) -> Self::Output {
+      PdfPoints::new(self.value - rhs.value)
+    }
+  }
+
+  impl SubAssign<PdfPoints> for PdfPoints {
+    #[inline]
+    fn sub_assign(&mut self, rhs: PdfPoints) {
+      self.value -= rhs.value;
+    }
+  }
+
+  impl Mul<f32> for PdfPoints {
+    type Output = PdfPoints;
+
+    #[inline]
+    fn mul(self, rhs: f32) -> Self::Output {
+      PdfPoints::new(self.value * rhs)
+    }
+  }
+
+  impl Div<f32> for PdfPoints {
+    type Output = PdfPoints;
+
+    #[inline]
+    fn div(self, rhs: f32) -> Self::Output {
+      PdfPoints::new(self.value / rhs)
+    }
+  }
+}
+
+mod text_width {
+  /// From https://github.com/adambisek/string-pixel-width/blob/master/src/widthsMap.js
+  ///
+  /// MIT License
+  ///
+  /// Copyright (c) 2023 Adam Ernst Bisek
+  ///
+  /// Permission is hereby granted, free of charge, to any person obtaining a copy
+  /// of this software and associated documentation files (the "Software"), to deal
+  /// in the Software without restriction, including without limitation the rights
+  /// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  /// copies of the Software, and to permit persons to whom the Software is
+  /// furnished to do so, subject to the following conditions:
+  ///
+  /// The above copyright notice and this permission notice shall be included in all
+  /// copies or substantial portions of the Software.
+  ///
+  /// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  /// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  /// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  /// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  /// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  /// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  /// SOFTWARE.
+  const HELVETICA_CHAR_WIDTH: phf::Map<char, u32> = phf::phf_map! {
+    '0' => 56,
+    '1' => 56,
+    '2' => 56,
+    '3' => 56,
+    '4' => 56,
+    '5' => 56,
+    '6' => 56,
+    '7' => 56,
+    '8' => 56,
+    '9' => 56,
+    ' ' => 28,
+    '!' => 28,
+    '"' => 35,
+    '#' => 56,
+    '$' => 56,
+    '%' => 89,
+    '&' => 67,
+    '\'' => 19,
+    '(' => 33,
+    ')' => 33,
+    '*' => 39,
+    '+' => 58,
+    ',' => 28,
+    '-' => 33,
+    '.' => 28,
+    '/' => 28,
+    ':' => 28,
+    ';' => 28,
+    '<' => 58,
+    '=' => 58,
+    '>' => 58,
+    '?' => 56,
+    '@' => 102,
+    'A' => 67,
+    'B' => 67,
+    'C' => 72,
+    'D' => 72,
+    'E' => 67,
+    'F' => 61,
+    'G' => 78,
+    'H' => 72,
+    'I' => 28,
+    'J' => 50,
+    'K' => 67,
+    'L' => 56,
+    'M' => 83,
+    'N' => 72,
+    'O' => 78,
+    'P' => 67,
+    'Q' => 78,
+    'R' => 72,
+    'S' => 67,
+    'T' => 61,
+    'U' => 72,
+    'V' => 67,
+    'W' => 94,
+    'X' => 67,
+    'Y' => 67,
+    'Z' => 61,
+    '[' => 28,
+    '\\' => 28,
+    ']' => 28,
+    '^' => 47,
+    '_' => 56,
+    '`' => 33,
+    'a' => 56,
+    'b' => 56,
+    'c' => 50,
+    'd' => 56,
+    'e' => 56,
+    'f' => 28,
+    'g' => 56,
+    'h' => 56,
+    'i' => 22,
+    'j' => 22,
+    'k' => 50,
+    'l' => 22,
+    'm' => 83,
+    'n' => 56,
+    'o' => 56,
+    'p' => 56,
+    'q' => 56,
+    'r' => 33,
+    's' => 50,
+    't' => 28,
+    'u' => 56,
+    'v' => 50,
+    'w' => 72,
+    'x' => 50,
+    'y' => 50,
+    'z' => 50,
+    '{' => 33,
+    '|' => 26,
+    '}' => 33,
+    '~' => 58,
+  };
+
+  pub fn helvetica_width(text: &str, font_size: f32) -> f32 {
+    text
+      .chars()
+      .map(|c| {
+        *HELVETICA_CHAR_WIDTH
+          .get(&c)
+          .unwrap_or(HELVETICA_CHAR_WIDTH.get(&'x').unwrap()) as f32
+          * (font_size / 100.0)
+      })
+      .sum()
+  }
 }
