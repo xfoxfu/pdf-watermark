@@ -5,8 +5,9 @@ use axum::response::IntoResponse;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use ulid::Ulid;
+use utoipa::ToSchema;
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, ToSchema)]
 pub struct Event {
   pub id: Ulid,
   pub title: String,
@@ -37,6 +38,11 @@ impl From<crate::database::Event> for Event {
   }
 }
 
+#[utoipa::path(
+  get,
+  path = "/events",
+  responses((status = 200, body = Event)),
+)]
 pub async fn list(State(state): State<AppState>) -> AppResult<impl IntoResponse> {
   let events = state
     .event_accessor()
@@ -48,6 +54,12 @@ pub async fn list(State(state): State<AppState>) -> AppResult<impl IntoResponse>
   Ok(Json(events))
 }
 
+#[utoipa::path(
+  get,
+  path = "/events/{id}",
+  responses((status = 200, body = Event)),
+  params(("id" = Ulid, Path, description = "The ID of the event")),
+)]
 pub async fn get(State(state): State<AppState>, Path(id): Path<Ulid>) -> AppResult<impl IntoResponse> {
   let Some(event) = state.event_accessor().get(id.into()).await?.map(Event::from) else {
     return Err(AppError::DomainError(crate::DomainError::EventNotFound { id }));
@@ -55,7 +67,7 @@ pub async fn get(State(state): State<AppState>, Path(id): Path<Ulid>) -> AppResu
   Ok(Json(event))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateOrUpdateEvent {
   pub title: String,
   pub start_at: chrono::DateTime<chrono::Utc>,
@@ -66,6 +78,11 @@ pub struct CreateOrUpdateEvent {
   pub description: String,
 }
 
+#[utoipa::path(
+  post,
+  path = "/events",
+  responses((status = 200, body = Event)),
+)]
 pub async fn create(
   State(state): State<AppState>,
   Json(payload): Json<CreateOrUpdateEvent>,
@@ -85,6 +102,12 @@ pub async fn create(
   Ok(Json(Event::from(event)))
 }
 
+#[utoipa::path(
+  put,
+  path = "/events/{id}",
+  responses((status = 200, body = Event)),
+  params(("id" = Ulid, Path, description = "The ID of the event")),
+)]
 pub async fn update(
   State(state): State<AppState>,
   Path(id): Path<Ulid>,
@@ -106,6 +129,12 @@ pub async fn update(
   Ok(Json(Event::from(event)))
 }
 
+#[utoipa::path(
+  delete,
+  path = "/events/{id}",
+  responses((status = 200, body = Event)),
+  params(("id" = Ulid, Path, description = "The ID of the event")),
+)]
 pub async fn delete(State(state): State<AppState>, Path(id): Path<Ulid>) -> AppResult<impl IntoResponse> {
   let event = state.event_accessor().delete(id).await?;
   Ok(Json(Event::from(event)))
