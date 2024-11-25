@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM rust:1.78-bookworm as builder
+FROM --platform=$BUILDPLATFORM rust:1.82-bookworm AS builder
 
 ARG BUILDARCH
 ARG TARGETPLATFORM
@@ -17,7 +17,7 @@ RUN case "${TARGETPLATFORM}" in \
     cat /app/.env
 
 RUN . /app/.env && \
-    apt-get update && apt-get install -y crossbuild-essential-${TARGETARCH} pkg-config libssl-dev && \
+    apt-get update && apt-get install -y crossbuild-essential-${TARGETARCH} && \
     rustup target add ${RUST_TARGET}
 
 WORKDIR /app
@@ -37,8 +37,8 @@ RUN . /app/.env && \
 
 FROM debian:bookworm-slim
 
-RUN mkdir -p /app && \
-    apt-get update \
+RUN mkdir -p /app \
+    && apt-get update \
     && apt-get install -y ca-certificates tzdata tini \
     && rm -rf /var/lib/apt/lists/*
 

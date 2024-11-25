@@ -23,7 +23,7 @@ qpdf = { version = "0.3.1", features = ["vendored"] }
 serde = { version = "1.0.210", features = ["derive"] }
 sqlx = { version = "0.8.2", features = [
   "runtime-tokio",
-  "tls-native-tls",
+  "tls-rustls",
   "postgres",
   "sqlite",
   "chrono",
