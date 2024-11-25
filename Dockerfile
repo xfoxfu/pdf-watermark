@@ -17,7 +17,7 @@ RUN case "${TARGETPLATFORM}" in \
     cat /app/.env
 
 RUN . /app/.env && \
-    apt-get update && apt-get install -y crossbuild-essential-${TARGETARCH} && \
+    apt-get update && apt-get install -y crossbuild-essential-${TARGETARCH} pkg-config libssl-dev && \
     rustup target add ${RUST_TARGET}
 
 WORKDIR /app
