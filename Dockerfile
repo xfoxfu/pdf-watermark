@@ -21,19 +21,19 @@ RUN . /app/.env && \
     rustup target add ${RUST_TARGET}
 
 WORKDIR /app
-RUN cargo init --bin --name pdf-watermark
+RUN cargo init --bin --name vatprc-uniapi
 COPY Cargo.toml Cargo.toml
 COPY Cargo.lock Cargo.lock
 RUN . /app/.env && \
     cargo build --release --locked --target ${RUST_TARGET} && \
-    rm src/*.rs target/${RUST_TARGET}/release/deps/pdf_watermark*
+    rm src/*.rs target/${RUST_TARGET}/release/deps/vatprc_uniapi*
 
 ADD . ./
 
 RUN . /app/.env && \
     cargo build --release --frozen --target ${RUST_TARGET} && \
     mkdir -p /app/target/release && \
-    cp /app/target/${RUST_TARGET}/release/pdf-watermark /app/target/release/pdf-watermark
+    cp /app/target/${RUST_TARGET}/release/vatprc-uniapi /app/target/release/vatprc-uniapi
 
 FROM debian:bookworm-slim
 
@@ -44,6 +44,6 @@ RUN mkdir -p /app \
 
 WORKDIR /app
 
-COPY --from=builder /app/target/release/pdf-watermark pdf-watermark
+COPY --from=builder /app/target/release/vatprc-uniapi vatprc-uniapi
 
-CMD ["/usr/bin/tini", "--", "/app/pdf-watermark"]
+CMD ["/usr/bin/tini", "--", "/app/vatprc-uniapi"]
